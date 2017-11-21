@@ -267,7 +267,7 @@ def run_offline_command(config, config_options):
     else:
         wallet = None
     # check password
-    if cmd.requires_password and storage.get('use_encryption'):
+    if cmd.requires_password and wallet.has_password():
         try:
             seed = wallet.check_password(password)
         except InvalidPassword:

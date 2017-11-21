@@ -385,17 +385,18 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
         self.exec_layout(slayout)
         return slayout.is_ext
 
-    def pw_layout(self, msg, kind):
-        playout = PasswordLayout(None, msg, kind, self.next_button)
+    def pw_layout(self, msg, kind, force_disable_encrypt_cb):
+        playout = PasswordLayout(None, msg, kind, self.next_button,
+                                 force_disable_encrypt_cb=force_disable_encrypt_cb)
         playout.encrypt_cb.setChecked(True)
         self.exec_layout(playout.layout())
         return playout.new_password(), playout.encrypt_cb.isChecked()
 
     @wizard_dialog
-    def request_password(self, run_next):
+    def request_password(self, run_next, force_disable_encrypt_cb=False):
         """Request the user enter a new password and confirm it.  Return
         the password or None for no password."""
-        return self.pw_layout(MSG_ENTER_PASSWORD, PW_NEW)
+        return self.pw_layout(MSG_ENTER_PASSWORD, PW_NEW, force_disable_encrypt_cb)
 
     def show_restore(self, wallet, network):
         # FIXME: these messages are shown after the install wizard is

@@ -33,7 +33,7 @@ import pbkdf2, hmac, hashlib
 import base64
 import zlib
 
-from .util import PrintError, profiler
+from .util import PrintError, profiler, InvalidPassword
 from .plugins import run_hook, plugin_loaders
 from .keystore import bip44_derivation
 from . import bitcoin
@@ -107,10 +107,15 @@ class WalletStorage(PrintError):
                 self.upgrade()
 
     def is_encrypted(self):
-        try:
-            return base64.b64decode(self.raw)[0:4] == b'BIE1'
-        except:
-            return False
+        """Return if storage encryption is currently enabled."""
+        loaded_data = bool(self.data)
+        if loaded_data:
+            return self.pubkey is not None
+        else:
+            try:
+                return base64.b64decode(self.raw)[0:4] == b'BIE1'
+            except:
+                return False
 
     def file_exists(self):
         return self.path and os.path.exists(self.path)
@@ -127,13 +132,22 @@ class WalletStorage(PrintError):
         s = s.decode('utf8')
         self.load_data(s)
 
-    def set_password(self, password, encrypt):
-        self.put('use_encryption', bool(password))
-        if encrypt and password:
+    def check_password(self, password):
+        if self.pubkey and self.pubkey != self.get_key(password).get_public_key():
+            raise InvalidPassword()
+
+    def set_password(self, password, encrypt_storage, encrypt_keystore):
+        # save flag so that we can tell if keystore is encrypted
+        self.put('use_encryption', bool(password) and encrypt_keystore)
+        # calculate key for storage encryption if applicable
+        if encrypt_storage and password:
             ec_key = self.get_key(password)
             self.pubkey = ec_key.get_public_key()
         else:
             self.pubkey = None
+        # make sure next storage.write() saves changes
+        with self.lock:
+            self.modified = True
 
     def get(self, key, default=None):
         with self.lock:

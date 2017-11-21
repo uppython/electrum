@@ -418,9 +418,9 @@ class TrustedCoinPlugin(BasePlugin):
         k2 = keystore.from_xpub(xpub2)
         wizard.request_password(run_next=lambda pw, encrypt: self.on_password(wizard, pw, encrypt, k1, k2))
 
-    def on_password(self, wizard, password, encrypt, k1, k2):
+    def on_password(self, wizard, password, encrypt_storage, k1, k2):
         k1.update_password(None, password)
-        wizard.storage.set_password(password, encrypt)
+        wizard.storage.set_password(password, encrypt_storage, encrypt_keystore=True)
         wizard.storage.put('x1/', k1.dump())
         wizard.storage.put('x2/', k2.dump())
         wizard.storage.write()
@@ -468,7 +468,7 @@ class TrustedCoinPlugin(BasePlugin):
         else:
             self.create_keystore(wizard, seed, passphrase)
 
-    def on_restore_pw(self, wizard, seed, passphrase, password, encrypt):
+    def on_restore_pw(self, wizard, seed, passphrase, password, encrypt_storage):
         storage = wizard.storage
         xprv1, xpub1, xprv2, xpub2 = self.xkeys_from_seed(seed, passphrase)
         k1 = keystore.from_xprv(xprv1)
@@ -482,7 +482,7 @@ class TrustedCoinPlugin(BasePlugin):
         xpub3 = make_xpub(signing_xpub, long_user_id)
         k3 = keystore.from_xpub(xpub3)
         storage.put('x3/', k3.dump())
-        storage.set_password(password, encrypt)
+        storage.set_password(password, encrypt_storage, encrypt_keystore=True)
         wizard.wallet = Wallet_2fa(storage)
         wizard.create_addresses()
 

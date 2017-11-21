@@ -57,7 +57,7 @@ class PasswordLayout(object):
 
     titles = [_("Enter Password"), _("Change Password"), _("Enter Passphrase")]
 
-    def __init__(self, wallet, msg, kind, OK_button):
+    def __init__(self, wallet, msg, kind, OK_button, force_disable_encrypt_cb=False):
         self.wallet = wallet
 
         self.pw = QLineEdit()
@@ -126,7 +126,8 @@ class PasswordLayout(object):
         def enable_OK():
             ok = self.new_pw.text() == self.conf_pw.text()
             OK_button.setEnabled(ok)
-            self.encrypt_cb.setEnabled(ok and bool(self.new_pw.text()))
+            self.encrypt_cb.setEnabled(ok and bool(self.new_pw.text())
+                                       and not force_disable_encrypt_cb)
         self.new_pw.textChanged.connect(enable_OK)
         self.conf_pw.textChanged.connect(enable_OK)
 
@@ -167,7 +168,7 @@ class ChangePasswordDialog(WindowModalDialog):
 
     def __init__(self, parent, wallet):
         WindowModalDialog.__init__(self, parent)
-        is_encrypted = wallet.storage.is_encrypted()
+        is_encrypted = wallet.has_storage_encryption()
         if not wallet.has_password():
             msg = _('Your wallet is not protected.')
             msg += ' ' + _('Use this dialog to add a password to your wallet.')
@@ -178,7 +179,9 @@ class ChangePasswordDialog(WindowModalDialog):
                 msg = _('Your wallet is password protected and encrypted.')
             msg += ' ' + _('Use this dialog to change your password.')
         OK_button = OkButton(self)
-        self.playout = PasswordLayout(wallet, msg, PW_CHANGE, OK_button)
+        self.playout = PasswordLayout(
+            wallet, msg, PW_CHANGE, OK_button,
+            force_disable_encrypt_cb=not wallet.can_have_keystore_encryption())
         self.setWindowTitle(self.playout.title())
         vbox = QVBoxLayout(self)
         vbox.addLayout(self.playout.layout())

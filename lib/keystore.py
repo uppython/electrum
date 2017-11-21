@@ -116,9 +116,6 @@ class Imported_KeyStore(Software_KeyStore):
     def is_deterministic(self):
         return False
 
-    def can_change_password(self):
-        return True
-
     def get_master_public_key(self):
         return None
 
@@ -195,9 +192,6 @@ class Deterministic_KeyStore(Software_KeyStore):
 
     def is_watching_only(self):
         return not self.has_seed()
-
-    def can_change_password(self):
-        return not self.is_watching_only()
 
     def add_seed(self, seed):
         if self.seed:
@@ -521,10 +515,6 @@ class Hardware_KeyStore(KeyStore, Xpub):
         pin and passphrase as appropriate when needed.'''
         assert not self.has_seed()
         return False
-
-    def can_change_password(self):
-        return False
-
 
 
 def bip39_normalize_passphrase(passphrase):

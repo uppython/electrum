@@ -143,17 +143,22 @@ class BaseWizard(object):
         self.add_xpub_dialog(title=title, message=message, run_next=self.on_import, is_valid=v)
 
     def on_import(self, text):
+        # create a temporary wallet and exploit that modifications
+        # will be reflected on self.storage
         if keystore.is_address_list(text):
-            self.wallet = Imported_Wallet(self.storage)
+            w = Imported_Wallet(self.storage)
             for x in text.split():
-                self.wallet.import_address(x)
+                w.import_address(x)
         elif keystore.is_private_key_list(text):
             k = keystore.Imported_KeyStore({})
             self.storage.put('keystore', k.dump())
-            self.wallet = Imported_Wallet(self.storage)
+            w = Imported_Wallet(self.storage)
             for x in text.split():
-                self.wallet.import_private_key(x, None)
-        self.terminate()
+                w.import_private_key(x, None)
+            self.keystores.append(w.keystore)
+        else:
+            return self.terminate()
+        return self.run('create_wallet')
 
     def restore_from_key(self):
         if self.wallet_type == 'standard':
@@ -346,13 +351,13 @@ class BaseWizard(object):
                 self.run('create_wallet')
 
     def create_wallet(self):
-        if any(k.may_have_password() for k in self.keystores):
-            self.request_password(run_next=self.on_password)
-        else:
-            self.on_password(None, False)
+        encrypt_keystore = any(k.may_have_password() for k in self.keystores)
+        self.request_password(
+            run_next=lambda pw, enc_sto: self.on_password(pw, enc_sto, encrypt_keystore),
+            force_disable_encrypt_cb=not encrypt_keystore)
 
-    def on_password(self, password, encrypt):
-        self.storage.set_password(password, encrypt)
+    def on_password(self, password, encrypt_storage, encrypt_keystore):
+        self.storage.set_password(password, encrypt_storage, encrypt_keystore)
         for k in self.keystores:
             if k.may_have_password():
                 k.update_password(None, password)
@@ -368,6 +373,13 @@ class BaseWizard(object):
             self.storage.write()
             self.wallet = Multisig_Wallet(self.storage)
             self.run('create_addresses')
+        elif self.wallet_type == 'imported':
+            if len(self.keystores) > 0:
+                keys = self.keystores[0].dump()
+                self.storage.put('keystore', keys)
+            self.wallet = Imported_Wallet(self.storage)
+            self.wallet.storage.write()
+            self.terminate()
 
     def show_xpub_and_add_cosigners(self, xpub):
         self.show_xpub_dialog(xpub=xpub, run_next=lambda x: self.run('choose_keystore'))
