@@ -424,6 +424,9 @@ def parse_input(vds):
         d['num_sig'] = 0
         if scriptSig:
             parse_scriptSig(d, scriptSig)
+        is_complete = Transaction.is_txin_complete(d)
+        if not is_complete:
+            d['value'] = vds.read_uint64()
     return d
 
 def parse_witness(vds):
@@ -668,6 +671,13 @@ class Transaction:
         return script
 
     @classmethod
+    def is_txin_complete(self, txin):
+        num_sig = txin.get('num_sig', 1)
+        x_signatures = txin['signatures']
+        signatures = list(filter(None, x_signatures))
+        return len(signatures) == num_sig
+
+    @classmethod
     def get_preimage_script(self, txin):
         # only for non-segwit
         if txin['type'] == 'p2pkh':
@@ -687,13 +697,19 @@ class Transaction:
         return txin['prevout_hash'].decode('hex')[::-1].encode('hex') + int_to_hex(txin['prevout_n'], 4)
 
     @classmethod
-    def serialize_input(self, txin, script):
+    def serialize_input(self, txin, script, estimate_size=False):
         # Prev hash and index
         s = self.serialize_outpoint(txin)
         # Script length, script, sequence
         s += var_int(len(script)/2)
         s += script
         s += int_to_hex(txin.get('sequence', 0xffffffff - 1), 4)
+        # offline signing needs to know the input value
+        if self.is_txin_complete(txin) or estimate_size:
+            value_field = ''
+        else:
+            value_field = int_to_hex(txin['value'], 8)
+        s += value_field
         return s
 
     def BIP_LI01_sort(self):
@@ -748,7 +764,7 @@ class Transaction:
         nLocktime = int_to_hex(self.locktime, 4)
         inputs = self.inputs()
         outputs = self.outputs()
-        txins = var_int(len(inputs)) + ''.join(self.serialize_input(txin, self.input_script(txin, estimate_size)) for txin in inputs)
+        txins = var_int(len(inputs)) + ''.join(self.serialize_input(txin, self.input_script(txin, estimate_size), estimate_size) for txin in inputs)
         txouts = var_int(len(outputs)) + ''.join(self.serialize_output(o) for o in outputs)
         if witness and self.is_segwit():
             marker = '00'
@@ -799,7 +815,7 @@ class Transaction:
     def estimated_input_size(self, txin):
         '''Return an estimated of serialized input size in bytes.'''
         script = self.input_script(txin, True)
-        return len(self.serialize_input(txin, script)) / 2
+        return len(self.serialize_input(txin, script, True)) / 2
 
     def signature_count(self):
         r = 0
