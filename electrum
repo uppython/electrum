@@ -256,12 +256,13 @@ def init_cmdline(config_options, server):
 
 
 def run_offline_command(config, config_options):
+    print('run_offline_command() entered')
     cmdname = config.get('cmd')
     cmd = known_commands[cmdname]
     password = config_options.get('password')
     if cmd.requires_wallet:
         storage = WalletStorage(config.get_wallet_path())
-        if storage.is_encrypted():
+        if storage.is_encrypted():  # TODO
             storage.decrypt(password)
         wallet = Wallet(storage)
     else:

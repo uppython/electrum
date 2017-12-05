@@ -56,6 +56,13 @@ def multisig_type(wallet_type):
         match = [int(x) for x in match.group(1, 2)]
     return match
 
+def get_derivation_used_for_hw_device_encryption():
+    return ("m"
+            "/4541509'"      # ascii 'ELE'  as decimal
+            "/1112098098'")  # ascii 'BIE2' as decimal
+
+# storage encryption version
+STO_EV_PLAINTEXT, STO_EV_USER_PW, STO_EV_XPUB_PW = range(0, 3)
 
 class WalletStorage(PrintError):
 
@@ -70,9 +77,11 @@ class WalletStorage(PrintError):
         if self.file_exists():
             with open(self.path, "r") as f:
                 self.raw = f.read()
+            self._encryption_version = self._init_encryption_version()
             if not self.is_encrypted():
                 self.load_data(self.raw)
         else:
+            self._encryption_version = STO_EV_PLAINTEXT
             # avoid new wallets getting 'upgraded'
             self.put('seed_version', FINAL_SEED_VERSION)
 
@@ -108,14 +117,36 @@ class WalletStorage(PrintError):
 
     def is_encrypted(self):
         """Return if storage encryption is currently enabled."""
-        loaded_data = bool(self.data)
-        if loaded_data:
-            return self.pubkey is not None
-        else:
-            try:
-                return base64.b64decode(self.raw)[0:4] == b'BIE1'
-            except:
-                return False
+        return self.get_encryption_version() != STO_EV_PLAINTEXT
+
+    def is_encrypted_with_user_pw(self):
+        return self.get_encryption_version() == STO_EV_USER_PW
+
+    def is_encrypted_with_hw_device(self):
+        return self.get_encryption_version() == STO_EV_XPUB_PW
+
+    def get_encryption_version(self):
+        """Return the version of encryption used for this storage.
+
+        0: plaintext / no encryption
+
+        ECIES, private key derived from a password,
+        1: password is provided by user
+        2: password is derived from an xpub; used with hw wallets
+        """
+        return self._encryption_version
+
+    def _init_encryption_version(self):
+        try:
+            magic = base64.b64decode(self.raw)[0:4]
+            if magic == b'BIE1':
+                return STO_EV_USER_PW
+            elif magic == b'BIE2':
+                return STO_EV_XPUB_PW
+            else:
+                return STO_EV_PLAINTEXT
+        except:
+            return STO_EV_PLAINTEXT
 
     def file_exists(self):
         return self.path and os.path.exists(self.path)
@@ -125,26 +156,47 @@ class WalletStorage(PrintError):
         ec_key = bitcoin.EC_KEY(secret)
         return ec_key
 
+    def _get_encryption_magic(self):
+        v = self._encryption_version
+        if v == STO_EV_USER_PW:
+            return b'BIE1'
+        elif v == STO_EV_XPUB_PW:
+            return b'BIE2'
+        else:
+            raise Exception('no encryption magic for version: %s' % v)
+
     def decrypt(self, password):
         ec_key = self.get_key(password)
-        s = zlib.decompress(ec_key.decrypt_message(self.raw)) if self.raw else None
+        if self.raw:
+            enc_magic = self._get_encryption_magic()
+            s = zlib.decompress(ec_key.decrypt_message(self.raw, enc_magic))
+        else:
+            s = None
         self.pubkey = ec_key.get_public_key()
         s = s.decode('utf8')
         self.load_data(s)
 
     def check_password(self, password):
+        """Raises an InvalidPassword exception on invalid password"""
+        if not self.is_encrypted():
+            return
         if self.pubkey and self.pubkey != self.get_key(password).get_public_key():
             raise InvalidPassword()
 
-    def set_password(self, password, encrypt_storage, encrypt_keystore):
-        # save flag so that we can tell if keystore is encrypted
-        self.put('use_encryption', bool(password) and encrypt_keystore)
-        # calculate key for storage encryption if applicable
-        if encrypt_storage and password:
+    def set_keystore_encryption(self, enable):
+        self.put('use_encryption', enable)
+
+    def set_password(self, password, enc_version=None):
+        """Set a password to be used for encrypting this storage."""
+        if enc_version is None:
+            enc_version = self._encryption_version
+        if password and enc_version != STO_EV_PLAINTEXT:
             ec_key = self.get_key(password)
             self.pubkey = ec_key.get_public_key()
+            self._encryption_version = enc_version
         else:
             self.pubkey = None
+            self._encryption_version = STO_EV_PLAINTEXT
         # make sure next storage.write() saves changes
         with self.lock:
             self.modified = True
@@ -189,7 +241,8 @@ class WalletStorage(PrintError):
         if self.pubkey:
             s = bytes(s, 'utf8')
             c = zlib.compress(s)
-            s = bitcoin.encrypt_message(c, self.pubkey)
+            enc_magic = self._get_encryption_magic()
+            s = bitcoin.encrypt_message(c, self.pubkey, enc_magic)
             s = s.decode('utf8')
 
         temp_path = "%s.tmp.%s" % (self.path, os.getpid())

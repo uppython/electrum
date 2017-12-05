@@ -421,7 +421,7 @@ class DeviceMgr(ThreadJob, PrintError):
                 return self.create_client(device, handler, plugin)
 
 
-    def force_pair_xpub(self, plugin, handler, info, xpub, derivation, devices):
+    def force_pair_xpub(self, plugin, handler, info, xpub, derivation, devices):  # TODO maybe this could be modified to suit needs
         # The wallet has not been previously paired, so let the user
         # choose an unpaired device and compare its first address.
         xtype = bitcoin.xpub_type(xpub)

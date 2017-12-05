@@ -516,6 +516,14 @@ class Hardware_KeyStore(KeyStore, Xpub):
         assert not self.has_seed()
         return False
 
+    def get_password_for_storage_encryption(self):
+        from .storage import get_derivation_used_for_hw_device_encryption
+        client = self.get_client()
+        derivation = get_derivation_used_for_hw_device_encryption()
+        xpub = client.get_xpub(derivation, "standard")
+        password = self.get_pubkey_from_xpub(xpub, ())
+        return password
+
 
 def bip39_normalize_passphrase(passphrase):
     return normalize('NFKD', passphrase or '')

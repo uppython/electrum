@@ -207,6 +207,7 @@ class Daemon(DaemonThread):
         if not storage.file_exists():
             return
         if storage.is_encrypted():
+            print('daemon::load_wallet() detected an encrypted wallet')
             if not password:
                 return
             storage.decrypt(password)

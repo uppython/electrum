@@ -43,7 +43,7 @@ from .util import NotEnoughFunds, PrintError, UserCancelled, profiler, format_sa
 from .bitcoin import *
 from .version import *
 from .keystore import load_keystore, Hardware_KeyStore
-from .storage import multisig_type
+from .storage import multisig_type, STO_EV_PLAINTEXT, STO_EV_USER_PW, STO_EV_XPUB_PW
 
 from . import transaction
 from .transaction import Transaction
@@ -1350,11 +1350,16 @@ class Abstract_Wallet(PrintError):
         return self.keystore and self.keystore.may_have_password()
 
     def has_keystore_encryption(self):
+        """Returns whether encryption is enabled for the keystore.
+
+        If True, e.g. signing a transaction will require a password.
+        """
         if self.can_have_keystore_encryption:
             return self.storage.get('use_encryption', False)
         return False
 
     def has_storage_encryption(self):
+        """Returns whether encryption is enabled for the wallet file on disk."""
         return self.storage.is_encrypted()
 
     @classmethod
@@ -1362,7 +1367,7 @@ class Abstract_Wallet(PrintError):
         return True
 
     def check_password(self, password):
-        if self.keystore and self.keystore.may_have_password():
+        if self.has_keystore_encryption():
             self.keystore.check_password(password)
         else:
             self.storage.check_password(password)
@@ -1372,7 +1377,15 @@ class Abstract_Wallet(PrintError):
             raise InvalidPassword()
         self.check_password(old_pw)
         encrypt_keystore = self._update_password_for_keystore(old_pw, new_pw)
-        self.storage.set_password(new_pw, encrypt_storage, encrypt_keystore)
+        self.storage.set_keystore_encryption(encrypt_keystore)
+        if encrypt_storage:
+            if isinstance(self.keystore, Hardware_KeyStore):
+                enc_version = STO_EV_XPUB_PW
+            else:
+                enc_version = STO_EV_USER_PW
+        else:
+            enc_version = STO_EV_PLAINTEXT
+        self.storage.set_password(new_pw, enc_version)
         self.storage.write()
 
     def sign_message(self, address, message, password):

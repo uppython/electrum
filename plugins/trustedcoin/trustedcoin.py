@@ -420,7 +420,9 @@ class TrustedCoinPlugin(BasePlugin):
 
     def on_password(self, wizard, password, encrypt_storage, k1, k2):
         k1.update_password(None, password)
-        wizard.storage.set_password(password, encrypt_storage, encrypt_keystore=True)
+        wizard.storage.set_keystore_encryption(bool(password))
+        if encrypt_storage:
+            wizard.storage.set_password(password, enc_version=1)
         wizard.storage.put('x1/', k1.dump())
         wizard.storage.put('x2/', k2.dump())
         wizard.storage.write()
@@ -482,7 +484,11 @@ class TrustedCoinPlugin(BasePlugin):
         xpub3 = make_xpub(signing_xpub, long_user_id)
         k3 = keystore.from_xpub(xpub3)
         storage.put('x3/', k3.dump())
-        storage.set_password(password, encrypt_storage, encrypt_keystore=True)
+
+        storage.set_keystore_encryption(bool(password))
+        if encrypt_storage:
+            storage.set_password(password, enc_version=1)
+
         wizard.wallet = Wallet_2fa(storage)
         wizard.create_addresses()
 
