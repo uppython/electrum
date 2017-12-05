@@ -12,6 +12,7 @@ from electrum import Wallet, WalletStorage
 from electrum.util import UserCancelled, InvalidPassword
 from electrum.base_wizard import BaseWizard
 from electrum.i18n import _
+from electrum.storage import STO_EV_USER_PW, STO_EV_XPUB_PW
 
 from .seed_dialog import SeedLayout, KeysLayout
 from .network_dialog import NetworkChoiceLayout
@@ -240,7 +241,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                 break
             if self.storage.file_exists() and self.storage.is_encrypted():
                 enc_version = self.storage.get_encryption_version()
-                if enc_version == 1:
+                if enc_version == STO_EV_USER_PW:
                     password = self.pw_e.text()
                     try:
                         self.storage.decrypt(password)
@@ -252,7 +253,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                         traceback.print_exc(file=sys.stdout)
                         QMessageBox.information(None, _('Error'), str(e))
                         return
-                elif enc_version == 2:
+                elif enc_version == STO_EV_XPUB_PW:
                     try:
                         self.run('choose_hw_device', 'decrypt_enc_v2')
                     except InvalidPassword as e:
