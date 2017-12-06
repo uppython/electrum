@@ -35,6 +35,8 @@ from .storage import STO_EV_USER_PW, STO_EV_XPUB_PW, get_derivation_used_for_hw_
 from .i18n import _
 from .util import UserCancelled
 
+# hardware device setup purpose
+HWD_SETUP_NEW_WALLET, HWD_SETUP_DECRYPT_WALLET = range(0, 2)
 
 class BaseWizard(object):
 
@@ -182,9 +184,7 @@ class BaseWizard(object):
         k = keystore.from_master_key(text)
         self.on_keystore(k)
 
-    def choose_hw_device(self, purpose=None):
-        if purpose is None:
-            purpose = 'setup'
+    def choose_hw_device(self, purpose=HWD_SETUP_NEW_WALLET):
         title = _('Hardware Keystore')
         # check available plugins
         support = self.plugins.get_hardware_support()
@@ -230,12 +230,12 @@ class BaseWizard(object):
         print('base_wizard::on_device() entered, purpose', purpose)
         self.plugin = self.plugins.get_plugin(name)
         try:
-            self.plugin.setup_device(device_info, self)
+            self.plugin.setup_device(device_info, self, purpose)
         except BaseException as e:
             self.show_error(str(e))
             self.choose_hw_device(purpose)
             return
-        if purpose == 'setup':
+        if purpose == HWD_SETUP_NEW_WALLET:
             if self.wallet_type=='multisig':
                 # There is no general standard for HD multisig.
                 # This is partially compatible with BIP45; assumes index=0
@@ -243,7 +243,7 @@ class BaseWizard(object):
             else:
                 f = lambda x: self.run('on_hw_derivation', name, device_info, str(x))
                 self.derivation_dialog(f)
-        elif purpose == 'decrypt_enc_v2':
+        elif purpose == HWD_SETUP_DECRYPT_WALLET:
             print('on_device() needs to do decryption on', self.storage)
             derivation = get_derivation_used_for_hw_device_encryption()
             xpub = self.plugin.get_xpub(device_info.device.id_, derivation, 'standard', self)

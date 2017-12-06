@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import *
 
 from electrum import Wallet, WalletStorage
 from electrum.util import UserCancelled, InvalidPassword
-from electrum.base_wizard import BaseWizard
+from electrum.base_wizard import BaseWizard, HWD_SETUP_DECRYPT_WALLET
 from electrum.i18n import _
 from electrum.storage import STO_EV_USER_PW, STO_EV_XPUB_PW
 
@@ -253,13 +253,15 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                         return
                 elif enc_version == STO_EV_XPUB_PW:
                     try:
-                        self.run('choose_hw_device', 'decrypt_enc_v2')
+                        self.run('choose_hw_device', HWD_SETUP_DECRYPT_WALLET)
                     except InvalidPassword as e:
-                        # FIXME if we get here because of mistyped passphrase then that passphrase gets "cached"
+                        # FIXME if we get here because of mistyped passphrase
+                        # then that passphrase gets "cached"
                         print('run_and_get_wallet() caught InvalidPassword, can go back: ', self.can_go_back())
-                        QMessageBox.information(None, _('Error'),
-                                                _('Failed to decrypt using this hardware device.') + '\n' +
-                                                _('If you use a passphrase, make sure it is correct.'))
+                        QMessageBox.information(
+                            None, _('Error'),
+                            _('Failed to decrypt using this hardware device.') + '\n' +
+                            _('If you use a passphrase, make sure it is correct.'))
                         # TODO maybe try to use go_back() ...
                         self.stack = []
                         return self.run_and_get_wallet()
