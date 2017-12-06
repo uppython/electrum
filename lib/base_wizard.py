@@ -24,12 +24,16 @@
 # SOFTWARE.
 
 import os
+import sys
+import traceback
+
 from . import bitcoin
 from . import keystore
 from .keystore import bip44_derivation
 from .wallet import Imported_Wallet, Standard_Wallet, Multisig_Wallet, wallet_types
 from .storage import STO_EV_USER_PW, STO_EV_XPUB_PW, get_derivation_used_for_hw_device_encryption
 from .i18n import _
+from .util import UserCancelled
 
 
 class BaseWizard(object):
@@ -367,8 +371,18 @@ class BaseWizard(object):
         encrypt_keystore = any(k.may_have_password() for k in self.keystores)
         if isinstance(self.keystores[0], keystore.Hardware_KeyStore):
             k = self.keystores[0]
-            k.handler = self.plugin.create_handler(self)
-            password = k.get_password_for_storage_encryption()
+            try:
+                k.handler = self.plugin.create_handler(self)
+                password = k.get_password_for_storage_encryption()
+            except UserCancelled:
+                devmgr = self.plugins.device_manager
+                devmgr.unpair_xpub(k.xpub)
+                self.choose_hw_device()
+                return
+            except BaseException as e:
+                traceback.print_exc(file=sys.stderr)
+                self.show_error(str(e))
+                return
             self.request_storage_encryption(
                 run_next=lambda encrypt_storage: self.on_password(
                     password,

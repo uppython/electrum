@@ -1784,8 +1784,18 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             from .password_dialog import ChangePasswordDialogForHW
             d = ChangePasswordDialogForHW(self, self.wallet)
             ok, encrypt_file = d.run()
+            if not ok:
+                return
 
-            hw_dev_pw = self.wallet.keystore.get_password_for_storage_encryption()
+            try:
+                hw_dev_pw = self.wallet.keystore.get_password_for_storage_encryption()
+            except UserCancelled:
+                traceback.print_exc(file=sys.stderr)
+                return
+            except BaseException as e:
+                traceback.print_exc(file=sys.stderr)
+                self.show_error(str(e))
+                return
             old_password = hw_dev_pw if self.wallet.has_password() else None
             new_password = hw_dev_pw if encrypt_file else None
         else:

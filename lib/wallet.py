@@ -1354,7 +1354,7 @@ class Abstract_Wallet(PrintError):
 
         If True, e.g. signing a transaction will require a password.
         """
-        if self.can_have_keystore_encryption:
+        if self.can_have_keystore_encryption():
             return self.storage.get('use_encryption', False)
         return False
 
@@ -1369,15 +1369,16 @@ class Abstract_Wallet(PrintError):
     def check_password(self, password):
         if self.has_keystore_encryption():
             self.keystore.check_password(password)
-        else:
-            self.storage.check_password(password)
+        self.storage.check_password(password)
 
     def update_password(self, old_pw, new_pw, encrypt_storage=False):
         if old_pw is None and self.has_password():
             raise InvalidPassword()
         self.check_password(old_pw)
-        encrypt_keystore = self._update_password_for_keystore(old_pw, new_pw)
-        self.storage.set_keystore_encryption(encrypt_keystore)
+
+        self._update_password_for_keystore(old_pw, new_pw)
+        encrypt_keystore = self.can_have_keystore_encryption()
+        self.storage.set_keystore_encryption(bool(new_pw) and encrypt_keystore)
         if encrypt_storage:
             if isinstance(self.keystore, Hardware_KeyStore):
                 enc_version = STO_EV_XPUB_PW
@@ -1411,12 +1412,9 @@ class Simple_Wallet(Abstract_Wallet):
         return self.keystore.is_watching_only()
 
     def _update_password_for_keystore(self, old_pw, new_pw):
-        encrypt_keystore = False
         if self.keystore and self.keystore.may_have_password():
             self.keystore.update_password(old_pw, new_pw)
             self.save_keystore()
-            encrypt_keystore = True
-        return encrypt_keystore
 
     def save_keystore(self):
         self.storage.put('keystore', self.keystore.dump())
@@ -1819,14 +1817,20 @@ class Multisig_Wallet(Deterministic_Wallet):
     def get_keystores(self):
         return [self.keystores[i] for i in sorted(self.keystores.keys())]
 
+    def can_have_keystore_encryption(self):
+        return any([k.may_have_password() for k in self.get_keystores()])
+
     def _update_password_for_keystore(self, old_pw, new_pw):
-        encrypt_keystore = False
         for name, keystore in self.keystores.items():
             if keystore.may_have_password():
                 keystore.update_password(old_pw, new_pw)
                 self.storage.put(name, keystore.dump())
-                encrypt_keystore = True
-        return encrypt_keystore
+
+    def check_password(self, password):
+        for name, keystore in self.keystores.items():
+            if keystore.may_have_password():
+                keystore.check_password(password)
+        self.storage.check_password(password)
 
     def has_seed(self):
         return self.keystore.has_seed()
