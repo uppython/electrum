@@ -260,7 +260,6 @@ def init_cmdline(config_options, server):
 
 
 def run_offline_command(config, config_options):
-    print('run_offline_command() entered')
     cmdname = config.get('cmd')
     cmd = known_commands[cmdname]
     password = config_options.get('password')

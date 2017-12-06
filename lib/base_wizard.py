@@ -227,7 +227,6 @@ class BaseWizard(object):
         self.choice_dialog(title=title, message=msg, choices=choices, run_next= lambda *args: self.on_device(*args, purpose=purpose))
 
     def on_device(self, name, device_info, *, purpose):
-        print('base_wizard::on_device() entered, purpose', purpose)
         self.plugin = self.plugins.get_plugin(name)
         try:
             self.plugin.setup_device(device_info, self, purpose)
@@ -244,7 +243,6 @@ class BaseWizard(object):
                 f = lambda x: self.run('on_hw_derivation', name, device_info, str(x))
                 self.derivation_dialog(f)
         elif purpose == HWD_SETUP_DECRYPT_WALLET:
-            print('on_device() needs to do decryption on', self.storage)
             derivation = get_derivation_used_for_hw_device_encryption()
             xpub = self.plugin.get_xpub(device_info.device.id_, derivation, 'standard', self)
             password = keystore.Xpub.get_pubkey_from_xpub(xpub, ())
