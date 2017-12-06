@@ -58,7 +58,7 @@ def multisig_type(wallet_type):
 
 def get_derivation_used_for_hw_device_encryption():
     return ("m"
-            "/4541509'"      # ascii 'ELE'  as decimal
+            "/4541509'"      # ascii 'ELE'  as decimal ("BIP43 purpose")
             "/1112098098'")  # ascii 'BIE2' as decimal
 
 # storage encryption version

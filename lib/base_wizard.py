@@ -402,9 +402,8 @@ class BaseWizard(object):
                     encrypt_keystore=encrypt_keystore),
                 force_disable_encrypt_cb=not encrypt_keystore)
 
-    def on_password(self, password, *, encrypt_storage, storage_enc_version=None, encrypt_keystore):
-        if storage_enc_version is None:
-            storage_enc_version = STO_EV_USER_PW
+    def on_password(self, password, *, encrypt_storage,
+                    storage_enc_version=STO_EV_USER_PW, encrypt_keystore):
         self.storage.set_keystore_encryption(bool(password) and encrypt_keystore)
         if encrypt_storage:
             self.storage.set_password(password, enc_version=storage_enc_version)

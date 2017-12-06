@@ -40,6 +40,7 @@ from electrum.wallet import Multisig_Wallet, Deterministic_Wallet
 from electrum.i18n import _
 from electrum.plugins import BasePlugin, hook
 from electrum.util import NotEnoughFunds
+from electrum.storage import STO_EV_USER_PW
 
 # signing_xpub is hardcoded so that the wallet can be restored from seed, without TrustedCoin's server
 signing_xpub = "xpub661MyMwAqRbcGnMkaTx2594P9EDuiEqMq25PM2aeG6UmwzaohgA6uDmNsvSUV8ubqwA3Wpste1hg69XHgjUuCD5HLcEp2QPzyV1HMrPppsL"
@@ -422,7 +423,7 @@ class TrustedCoinPlugin(BasePlugin):
         k1.update_password(None, password)
         wizard.storage.set_keystore_encryption(bool(password))
         if encrypt_storage:
-            wizard.storage.set_password(password, enc_version=1)
+            wizard.storage.set_password(password, enc_version=STO_EV_USER_PW)
         wizard.storage.put('x1/', k1.dump())
         wizard.storage.put('x2/', k2.dump())
         wizard.storage.write()
@@ -487,7 +488,7 @@ class TrustedCoinPlugin(BasePlugin):
 
         storage.set_keystore_encryption(bool(password))
         if encrypt_storage:
-            storage.set_password(password, enc_version=1)
+            storage.set_password(password, enc_version=STO_EV_USER_PW)
 
         wizard.wallet = Wallet_2fa(storage)
         wizard.create_addresses()

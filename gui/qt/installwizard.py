@@ -12,7 +12,6 @@ from electrum import Wallet, WalletStorage
 from electrum.util import UserCancelled, InvalidPassword
 from electrum.base_wizard import BaseWizard, HWD_SETUP_DECRYPT_WALLET
 from electrum.i18n import _
-from electrum.storage import STO_EV_USER_PW, STO_EV_XPUB_PW
 
 from .seed_dialog import SeedLayout, KeysLayout
 from .network_dialog import NetworkChoiceLayout
@@ -238,8 +237,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
             if not self.storage.file_exists():
                 break
             if self.storage.file_exists() and self.storage.is_encrypted():
-                enc_version = self.storage.get_encryption_version()
-                if enc_version == STO_EV_USER_PW:
+                if self.storage.is_encrypted_with_user_pw():
                     password = self.pw_e.text()
                     try:
                         self.storage.decrypt(password)
@@ -251,7 +249,7 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                         traceback.print_exc(file=sys.stdout)
                         QMessageBox.information(None, _('Error'), str(e))
                         return
-                elif enc_version == STO_EV_XPUB_PW:
+                elif self.storage.is_encrypted_with_hw_device():
                     try:
                         self.run('choose_hw_device', HWD_SETUP_DECRYPT_WALLET)
                     except InvalidPassword as e:
@@ -262,7 +260,6 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                             None, _('Error'),
                             _('Failed to decrypt using this hardware device.') + '\n' +
                             _('If you use a passphrase, make sure it is correct.'))
-                        # TODO maybe try to use go_back() ...
                         self.stack = []
                         return self.run_and_get_wallet()
                     except BaseException as e:
@@ -272,10 +269,9 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                     if self.storage.is_past_initial_decryption():
                         break
                     else:
-                        # TODO go back to previous screen
                         return
                 else:
-                    raise Exception("Unexpected encryption version: %s" % enc_version)
+                    raise Exception('Unexpected encryption version')
 
         path = self.storage.path
         if self.storage.requires_split():
