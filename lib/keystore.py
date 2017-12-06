@@ -45,6 +45,10 @@ class KeyStore(PrintError):
     def can_import(self):
         return False
 
+    def may_have_password(self):
+        """Returns whether the keystore can be encrypted with a password."""
+        raise NotImplementedError()
+
     def get_tx_derivations(self, tx):
         keypairs = {}
         for txin in tx.inputs():

@@ -369,7 +369,10 @@ class BaseWizard(object):
 
     def create_wallet(self):
         encrypt_keystore = any(k.may_have_password() for k in self.keystores)
-        if isinstance(self.keystores[0], keystore.Hardware_KeyStore):
+        # note: the following condition ("if") is duplicated logic from
+        # wallet.get_available_storage_encryption_version()
+        if self.wallet_type == 'standard' and isinstance(self.keystores[0], keystore.Hardware_KeyStore):
+            # offer encrypting with a pw derived from the hw device
             k = self.keystores[0]
             try:
                 k.handler = self.plugin.create_handler(self)

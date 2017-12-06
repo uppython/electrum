@@ -1349,6 +1349,17 @@ class Abstract_Wallet(PrintError):
     def can_have_keystore_encryption(self):
         return self.keystore and self.keystore.may_have_password()
 
+    def get_available_storage_encryption_version(self):
+        """Returns the type of storage encryption offered to the user.
+
+        A wallet file (storage) is either encrypted with this version
+        or is stored in plaintext.
+        """
+        if isinstance(self.keystore, Hardware_KeyStore):
+            return STO_EV_XPUB_PW
+        else:
+            return STO_EV_USER_PW
+
     def has_keystore_encryption(self):
         """Returns whether encryption is enabled for the keystore.
 
@@ -1376,17 +1387,21 @@ class Abstract_Wallet(PrintError):
             raise InvalidPassword()
         self.check_password(old_pw)
 
-        self._update_password_for_keystore(old_pw, new_pw)
-        encrypt_keystore = self.can_have_keystore_encryption()
-        self.storage.set_keystore_encryption(bool(new_pw) and encrypt_keystore)
         if encrypt_storage:
-            if isinstance(self.keystore, Hardware_KeyStore):
-                enc_version = STO_EV_XPUB_PW
-            else:
-                enc_version = STO_EV_USER_PW
+            enc_version = self.get_available_storage_encryption_version()
         else:
             enc_version = STO_EV_PLAINTEXT
         self.storage.set_password(new_pw, enc_version)
+
+        # note: Encrypting storage with a hw device is currently only
+        #       allowed for non-multisig wallets. Further,
+        #       Hardware_KeyStore.may_have_password() == False.
+        #       If these were not the case,
+        #       extra care would need to be taken when encrypting keystores.
+        self._update_password_for_keystore(old_pw, new_pw)
+        encrypt_keystore = self.can_have_keystore_encryption()
+        self.storage.set_keystore_encryption(bool(new_pw) and encrypt_keystore)
+
         self.storage.write()
 
     def sign_message(self, address, message, password):
@@ -1831,6 +1846,10 @@ class Multisig_Wallet(Deterministic_Wallet):
             if keystore.may_have_password():
                 keystore.check_password(password)
         self.storage.check_password(password)
+
+    def get_available_storage_encryption_version(self):
+        # multisig wallets are not offered hw device encryption
+        return STO_EV_USER_PW
 
     def has_seed(self):
         return self.keystore.has_seed()
