@@ -115,6 +115,15 @@ class WalletStorage(PrintError):
             if self.requires_upgrade():
                 self.upgrade()
 
+    def is_past_initial_decryption(self):
+        """Return if storage is in a usable state for normal operations.
+
+        The value is True exactly
+            if encryption is disabled completely (self.is_encrypted() == False),
+            or if encryption is enabled but the contents have already been decrypted.
+        """
+        return bool(self.data)
+
     def is_encrypted(self):
         """Return if storage encryption is currently enabled."""
         return self.get_encryption_version() != STO_EV_PLAINTEXT

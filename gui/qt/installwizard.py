@@ -234,10 +234,8 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
             if self.storage.file_exists() and not self.storage.is_encrypted():
                 break
             if self.loop.exec_() != 2:  # 2 = next
-                print('run_and_get_wallet() returning from while True')
                 return
             if not self.storage.file_exists():
-                print('run_and_get_wallet() breaking from while True')
                 break
             if self.storage.file_exists() and self.storage.is_encrypted():
                 enc_version = self.storage.get_encryption_version()
@@ -267,8 +265,11 @@ class InstallWizard(QDialog, MessageBoxMixin, BaseWizard):
                         traceback.print_exc(file=sys.stdout)
                         QMessageBox.information(None, _('Error'), str(e))
                         return
-                    print('run_and_get_wallet() in control again')
-                    break
+                    if self.storage.is_past_initial_decryption():
+                        break
+                    else:
+                        # TODO go back to previous screen
+                        return
                 else:
                     raise Exception("Unexpected encryption version: %s" % enc_version)
 
