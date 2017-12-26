@@ -56,6 +56,7 @@ cp electrum-icons/icons_rc.py $WINEPREFIX/drive_c/electrum/gui/qt/
 
 # Install frozen dependencies
 $PYTHON -m pip install -r ../../requirements.txt
+$PYTHON -m pip install -r ../../requirements-hw.txt
 
 pushd $WINEPREFIX/drive_c/electrum
 $PYTHON setup.py install
