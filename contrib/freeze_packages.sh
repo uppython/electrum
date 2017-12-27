@@ -20,7 +20,7 @@ pushd $contrib/..
 python setup.py install
 popd
 
-pip freeze | sed '/^Electrum/ d' > $contrib/requirements.txt
+pip freeze | sed '/^Electrum/ d' > $contrib/deterministic-build/requirements.txt
 
 
 # hw wallet library dependencies
@@ -32,13 +32,9 @@ source $venv_dir/bin/activate
 
 echo "Installing hw wallet dependencies"
 
-python -m pip install setuptools --upgrade
-python -m pip install cython --upgrade
-python -m pip install trezor --upgrade
-python -m pip install keepkey --upgrade
-python -m pip install btchip-python --upgrade
+python -m pip install -r ../requirements-hw.txt --upgrade
 
-pip freeze | sed '/^Electrum/ d' > $contrib/requirements-hw.txt
+pip freeze | sed '/^Electrum/ d' > $contrib/deterministic-build/requirements-hw.txt
 
 
 echo "Done. Updated requirements"

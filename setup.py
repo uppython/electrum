@@ -9,6 +9,9 @@ import platform
 import imp
 import argparse
 
+with open('requirements-hw.txt') as f:
+    requirements_hw = f.read().splitlines()
+
 version = imp.load_source('version', 'lib/version.py')
 
 if sys.version_info[:3] < (3, 4, 0):
@@ -46,6 +49,9 @@ setup(
         'jsonrpclib-pelix',
         'PySocks>=1.6.6',
     ],
+    extras_require={
+        'hardware': requirements_hw,
+    },
     packages=[
         'electrum',
         'electrum_gui',
