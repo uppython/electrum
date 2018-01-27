@@ -272,9 +272,12 @@ class Abstract_Wallet(PrintError):
     @profiler
     def check_history(self):
         save = False
+        addresses_in_wallet = set(self.get_addresses())
 
-        hist_addrs_mine = list(filter(lambda k: self.is_mine(k), self.history.keys()))
-        hist_addrs_not_mine = list(filter(lambda k: not self.is_mine(k), self.history.keys()))
+        hist_addrs_mine = list(filter(lambda k: self.is_mine(k, my_addresses=addresses_in_wallet),
+                                      self.history.keys()))
+        hist_addrs_not_mine = list(filter(lambda k: not self.is_mine(k, my_addresses=addresses_in_wallet),
+                                          self.history.keys()))
 
         for addr in hist_addrs_not_mine:
             self.history.pop(addr)
@@ -336,8 +339,17 @@ class Abstract_Wallet(PrintError):
 
         return changed
 
-    def is_mine(self, address):
-        return address in self.get_addresses()
+    def is_mine(self, address, my_addresses=None):
+        """Returns whether address is controlled by this wallet.
+
+        If my_addresses is specified, uses that to test against. This might be more efficient.
+        """
+        if my_addresses is None:
+            my_addresses = self.get_addresses()
+        try:
+            return address in my_addresses
+        except TypeError:
+            return False
 
     def is_change(self, address):
         if not self.is_mine(address):
