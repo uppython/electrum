@@ -357,19 +357,30 @@ def parse_scriptSig(d, _bytes):
 
     # p2sh transaction, m of n
     match = [ opcodes.OP_0 ] + [ opcodes.OP_PUSHDATA4 ] * (len(decoded) - 1)
-    if not match_decoded(decoded, match):
-        print_error("cannot find address in input script", bh2u(_bytes))
+    if match_decoded(decoded, match):
+        x_sig = [bh2u(x[1]) for x in decoded[1:-1]]
+        m, n, x_pubkeys, pubkeys, redeemScript = parse_redeemScript(decoded[-1][1])
+        # write result in d
+        d['type'] = 'p2sh'
+        d['num_sig'] = m
+        d['signatures'] = parse_sig(x_sig)
+        d['x_pubkeys'] = x_pubkeys
+        d['pubkeys'] = pubkeys
+        d['redeemScript'] = redeemScript
+        d['address'] = hash160_to_p2sh(hash_160(bfh(redeemScript)))
         return
-    x_sig = [bh2u(x[1]) for x in decoded[1:-1]]
-    m, n, x_pubkeys, pubkeys, redeemScript = parse_redeemScript(decoded[-1][1])
-    # write result in d
-    d['type'] = 'p2sh'
-    d['num_sig'] = m
-    d['signatures'] = parse_sig(x_sig)
-    d['x_pubkeys'] = x_pubkeys
-    d['pubkeys'] = pubkeys
-    d['redeemScript'] = redeemScript
-    d['address'] = hash160_to_p2sh(hash_160(bfh(redeemScript)))
+
+    # custom partial format for imported addresses
+    match = [ opcodes.OP_INVALIDOPCODE, opcodes.OP_0, opcodes.OP_PUSHDATA4 ]
+    if match_decoded(decoded, match):
+        d['type'] = 'address'
+        d['address'] = bitcoin.script_to_address(bh2u(decoded[2][1]))
+        d['num_sig'] = 1
+        d['x_pubkeys'] = [None]
+        d['signatures'] = [None]
+        return
+
+    print_error("cannot find address in input script", bh2u(_bytes))
 
 
 def parse_redeemScript(s):
@@ -466,6 +477,8 @@ def parse_witness(vds, txin):
     # hence (FIXME) p2wsh with n==2 (maybe n==1 ?) will probably fail.
     # If v==0 and n==2, we need parent scriptPubKey to distinguish between p2wpkh and p2wsh.
     if txin['type'] == 'coinbase':
+        pass
+    elif txin['type'] == 'address':
         pass
     elif txin['type'] == 'p2wsh-p2sh' or n > 2:
         try:
@@ -708,19 +721,21 @@ class Transaction:
     @classmethod
     def serialize_witness(self, txin, estimate_size=False):
         add_w = lambda x: var_int(len(x)//2) + x
-        if not self.is_segwit_input(txin):
+        if not (self.is_segwit_input(txin) or txin['type'] == 'address'):
             return '00'
-        pubkeys, sig_list = self.get_siglist(txin, estimate_size)
-        if txin['type'] in ['p2wpkh', 'p2wpkh-p2sh']:
+        _type = txin['type']
+        if estimate_size and _type == 'address':
+            _type = self.guess_txintype_from_address(txin['address'])
+        if _type in ['p2wpkh', 'p2wpkh-p2sh']:
+            pubkeys, sig_list = self.get_siglist(txin, estimate_size)
             witness = var_int(2) + add_w(sig_list[0]) + add_w(pubkeys[0])
-        elif txin['type'] in ['p2wsh', 'p2wsh-p2sh']:
+        elif _type in ['p2wsh', 'p2wsh-p2sh']:
+            pubkeys, sig_list = self.get_siglist(txin, estimate_size)
             n = len(sig_list) + 2
             witness_script = multisig_script(pubkeys, txin['num_sig'])
             witness = var_int(n) + '00' + ''.join(add_w(x) for x in sig_list) + add_w(witness_script)
         else:
-            witness = txin.get('witness', None)
-            if not witness:
-                raise BaseException('wrong txin type:', txin['type'])
+            witness = txin.get('witness', '00')
         if self.is_txin_complete(txin) or estimate_size:
             value_field = ''
         else:
@@ -728,13 +743,27 @@ class Transaction:
         return value_field + witness
 
     @classmethod
-    def is_segwit_input(cls, txin):
+    def is_segwit_input(cls, txin, guess_for_address=False):
+        _type = txin['type']
+        if _type == 'address' and guess_for_address:
+            _type = cls.guess_txintype_from_address(txin['address'])
         has_nonzero_witness = txin.get('witness', '00') != '00'
-        return cls.is_segwit_inputtype(txin['type']) or has_nonzero_witness
+        return cls.is_segwit_inputtype(_type) or has_nonzero_witness
 
     @classmethod
     def is_segwit_inputtype(cls, txin_type):
         return txin_type in ('p2wpkh', 'p2wpkh-p2sh', 'p2wsh', 'p2wsh-p2sh')
+
+    @classmethod
+    def guess_txintype_from_address(cls, addr):
+        witver, witprog = segwit_addr.decode(NetworkConstants.SEGWIT_HRP, addr)
+        if witprog is not None:
+            return 'p2wpkh'
+        addrtype, hash_160 = b58_address_to_hash160(addr)
+        if addrtype == NetworkConstants.ADDRTYPE_P2PKH:
+            return 'p2pkh'
+        elif addrtype == NetworkConstants.ADDRTYPE_P2SH:
+            return 'p2wpkh-p2sh'
 
     @classmethod
     def input_script(self, txin, estimate_size=False):
@@ -743,6 +772,8 @@ class Transaction:
             return txin['scriptSig']
         pubkeys, sig_list = self.get_siglist(txin, estimate_size)
         script = ''.join(push_script(x) for x in sig_list)
+        if _type == 'address' and estimate_size:
+            _type = self.guess_txintype_from_address(txin['address'])
         if _type == 'p2pk':
             pass
         elif _type == 'p2sh':
@@ -763,7 +794,7 @@ class Transaction:
             scriptSig = bitcoin.p2wsh_nested_script(witness_script)
             return push_script(scriptSig)
         elif _type == 'address':
-            script += push_script(pubkeys[0])
+            return 'ffff00' + push_script(bitcoin.address_to_script(txin['address']))
         elif _type == 'unknown':
             return txin['scriptSig']
         return script
@@ -849,8 +880,8 @@ class Transaction:
             preimage = nVersion + txins + txouts + nLocktime + nHashType
         return preimage
 
-    def is_segwit(self):
-        return any(self.is_segwit_input(x) for x in self.inputs())
+    def is_segwit(self, guess_for_address=False):
+        return any(self.is_segwit_input(x, guess_for_address=guess_for_address) for x in self.inputs())
 
     def serialize(self, estimate_size=False, witness=True):
         nVersion = int_to_hex(self.version, 4)
@@ -859,7 +890,9 @@ class Transaction:
         outputs = self.outputs()
         txins = var_int(len(inputs)) + ''.join(self.serialize_input(txin, self.input_script(txin, estimate_size)) for txin in inputs)
         txouts = var_int(len(outputs)) + ''.join(self.serialize_output(o) for o in outputs)
-        if witness and self.is_segwit():
+        use_segwit_serialization = estimate_size and self.is_segwit(guess_for_address=True) or \
+            not estimate_size and (self.is_segwit() or any(txin['type'] == 'address' for txin in inputs))
+        if witness and use_segwit_serialization:
             marker = '00'
             flag = '01'
             witness = ''.join(self.serialize_witness(x, estimate_size) for x in inputs)
@@ -919,8 +952,7 @@ class Transaction:
         script = cls.input_script(txin, True)
         input_size = len(cls.serialize_input(txin, script)) // 2
 
-        if cls.is_segwit_input(txin):
-            assert is_segwit_tx
+        if cls.is_segwit_input(txin, guess_for_address=True):
             witness_size = len(cls.serialize_witness(txin, True)) // 2
         else:
             witness_size = 1 if is_segwit_tx else 0
@@ -944,10 +976,10 @@ class Transaction:
 
     def estimated_witness_size(self):
         """Return an estimate of witness size in bytes."""
-        if not self.is_segwit():
+        estimate = not self.is_complete()
+        if not self.is_segwit(guess_for_address=estimate):
             return 0
         inputs = self.inputs()
-        estimate = not self.is_complete()
         witness = ''.join(self.serialize_witness(x, estimate) for x in inputs)
         witness_size = len(witness) // 2 + 2  # include marker and flag
         return witness_size

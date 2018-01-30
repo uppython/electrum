@@ -1135,7 +1135,8 @@ class Abstract_Wallet(PrintError):
         if self.is_mine(address):
             txin['type'] = self.get_txin_type(address)
             # segwit needs value to sign
-            if txin.get('value') is None and Transaction.is_segwit_input(txin):
+            if txin.get('value') is None and \
+                    (Transaction.is_segwit_input(txin) or txin['type'] == 'address'):
                 received, spent = self.get_addr_io(address)
                 item = received.get(txin['prevout_hash']+':%d'%txin['prevout_n'])
                 tx_height, value, is_cb = item
@@ -1145,6 +1146,9 @@ class Abstract_Wallet(PrintError):
     def can_sign(self, tx):
         if tx.is_complete():
             return False
+        for txin in tx.inputs():
+            if txin['type'] == 'address':
+                self.add_input_info(txin)
         for k in self.get_keystores():
             if k.can_sign(tx):
                 return True
@@ -1607,6 +1611,7 @@ class Imported_Wallet(Simple_Wallet):
             pubkey = self.addresses[address]['pubkey']
             txin['num_sig'] = 1
             txin['x_pubkeys'] = [pubkey]
+            txin['pubkeys'] = [pubkey]
             txin['signatures'] = [None]
         else:
             redeem_script = self.addresses[address]['redeem_script']
