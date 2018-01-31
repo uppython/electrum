@@ -419,7 +419,7 @@ class Abstract_Wallet(PrintError):
         return self.network.get_local_height() if self.network else self.storage.get('stored_height', 0)
 
     def get_tx_height(self, tx_hash):
-        """ return the height and timestamp of a transaction. """
+        """ Given a transaction, returns (height, conf, timestamp) """
         with self.lock:
             if tx_hash in self.verified_tx:
                 height, timestamp, pos = self.verified_tx[tx_hash]
@@ -711,14 +711,28 @@ class Abstract_Wallet(PrintError):
         is_coinbase = tx.inputs()[0]['type'] == 'coinbase'
         related = False
         with self.transaction_lock:
-            # remove all conflicting txns; keep this one
+            # Find all conflicting transactions.
+            # In case of a conflict,
+            #     1. mempool (and confirmed txns) have priority over local txns
+            #     2. this new txn has priority over existing ones
+            # When this method exits, there must NOT be any conflict, so
+            # either keep this txn and remove all conflicting (along with dependencies)
+            #     or drop this txn
             conflicting_txns = self.get_conflicting_transactions(tx)
-            to_remove = set()
-            to_remove |= conflicting_txns
-            for conflicting_tx_hash in conflicting_txns:
-                to_remove |= self.get_depending_transactions(conflicting_tx_hash)
-            for tx_hash2 in to_remove:
-                self.remove_transaction(tx_hash2)
+            if conflicting_txns:
+                tx_height = self.get_tx_height(tx_hash)[0]
+                existing_nonlocal_txn = any(self.get_tx_height(tx_hash2)[0] != TX_HEIGHT_LOCAL
+                                            for tx_hash2 in conflicting_txns)
+                if existing_nonlocal_txn and tx_height == TX_HEIGHT_LOCAL:
+                    # this is a local tx that conflicts with non-local txns; drop.
+                    return False
+                # keep this txn and remove all conflicting
+                to_remove = set()
+                to_remove |= conflicting_txns
+                for conflicting_tx_hash in conflicting_txns:
+                    to_remove |= self.get_depending_transactions(conflicting_tx_hash)
+                for tx_hash2 in to_remove:
+                    self.remove_transaction(tx_hash2)
 
             # add inputs
             self.txi[tx_hash] = d = {}
@@ -774,6 +788,7 @@ class Abstract_Wallet(PrintError):
 
             # save
             self.transactions[tx_hash] = tx
+            return True
 
     def remove_transaction(self, tx_hash):
         with self.transaction_lock:
@@ -814,8 +829,8 @@ class Abstract_Wallet(PrintError):
                 self.print_error("tx was not in history", tx_hash)
 
     def receive_tx_callback(self, tx_hash, tx, tx_height):
-        self.add_transaction(tx_hash, tx)
         self.add_unverified_tx(tx_hash, tx_height)
+        self.add_transaction(tx_hash, tx)
 
     def receive_history_callback(self, addr, hist, tx_fees):
         with self.lock:
