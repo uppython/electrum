@@ -43,7 +43,7 @@ from . import bitcoin
 
 OLD_SEED_VERSION = 4        # electrum versions < 2.0
 NEW_SEED_VERSION = 11       # electrum versions >= 2.0
-FINAL_SEED_VERSION = 16     # electrum >= 2.7 will set this to prevent
+FINAL_SEED_VERSION = 17     # electrum >= 2.7 will set this to prevent
                             # old versions from overwriting new format
 
 
@@ -334,6 +334,7 @@ class WalletStorage(PrintError):
         self.convert_version_14()
         self.convert_version_15()
         self.convert_version_16()
+        self.convert_version_17()
 
         self.put('seed_version', FINAL_SEED_VERSION)  # just to be sure
         self.write()
@@ -520,6 +521,29 @@ class WalletStorage(PrintError):
             self.put('addresses', addresses_new)
 
         self.put('seed_version', 16)
+
+    def convert_version_17(self):
+        if not self._is_upgrade_method_needed(16, 16):
+            return
+
+        from .transaction import Transaction
+        history = self.get('addr_history', {})       # address -> [[txid, height], ...]
+        transactions = self.get('transactions', {})  # txid -> raw_tx
+        spent_outpoints = {}
+        for addr, lst in history.items():
+            for txid, height in lst:
+                raw_tx = transactions.get(txid, None)
+                if raw_tx is None:
+                    continue
+                tx = Transaction(raw_tx)
+                for txi in tx.inputs():
+                    ser = Transaction.get_outpoint_from_txin(txi)
+                    if ser is None:
+                        continue
+                    spent_outpoints[ser] = txid
+        self.put('spent_outpoints', spent_outpoints)
+
+        self.put('seed_version', 17)
 
     def convert_imported(self):
         # '/x' is the internal ID for imported accounts

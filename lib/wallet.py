@@ -205,7 +205,7 @@ class Abstract_Wallet(PrintError):
         # wallet.up_to_date is true when the wallet is synchronized (stronger requirement)
         self.up_to_date = False
         self.lock = threading.Lock()
-        self.transaction_lock = threading.Lock()
+        self.transaction_lock = threading.RLock()
 
         self.check_history()
 
@@ -233,12 +233,14 @@ class Abstract_Wallet(PrintError):
         self.txo = self.storage.get('txo', {})
         self.tx_fees = self.storage.get('tx_fees', {})
         self.pruned_txo = self.storage.get('pruned_txo', {})
+        self.spent_outpoints = self.storage.get('spent_outpoints', {})
         tx_list = self.storage.get('transactions', {})
         self.transactions = {}
         for tx_hash, raw in tx_list.items():
             tx = Transaction(raw)
             self.transactions[tx_hash] = tx
-            if self.txi.get(tx_hash) is None and self.txo.get(tx_hash) is None and (tx_hash not in self.pruned_txo.values()):
+            if self.txi.get(tx_hash) is None and self.txo.get(tx_hash) is None \
+                    and (tx_hash not in self.pruned_txo.values()):
                 self.print_error("removing unreferenced tx", tx_hash)
                 self.transactions.pop(tx_hash)
 
@@ -253,6 +255,7 @@ class Abstract_Wallet(PrintError):
             self.storage.put('txo', self.txo)
             self.storage.put('tx_fees', self.tx_fees)
             self.storage.put('pruned_txo', self.pruned_txo)
+            self.storage.put('spent_outpoints', self.spent_outpoints)
             self.storage.put('addr_history', self.history)
             if write:
                 self.storage.write()
@@ -263,6 +266,7 @@ class Abstract_Wallet(PrintError):
             self.txo = {}
             self.tx_fees = {}
             self.pruned_txo = {}
+            self.spent_outpoints = {}
         self.save_transactions()
         with self.lock:
             self.history = {}
@@ -682,10 +686,40 @@ class Abstract_Wallet(PrintError):
                     self.print_error("found pay-to-pubkey address:", addr)
                     return addr
 
+    def get_conflicting_transactions(self, tx):
+        """Returns a set of transaction hashes that are directly conflicting
+        with tx, i.e. they have common outpoints being spent with tx.
+        """
+        conflicting_txns = set()
+        with self.transaction_lock:
+            for txi in tx.inputs():
+                ser = Transaction.get_outpoint_from_txin(txi)
+                if ser is None:
+                    continue
+                spending_tx_hash = self.spent_outpoints.get(ser, None)
+                if spending_tx_hash is None:
+                    continue
+                # this outpoint (ser) has already been spent, by spending_tx
+                if spending_tx_hash not in self.transactions:
+                    # can't find this txn: delete and ignore it
+                    self.spent_outpoints.pop(ser)
+                    continue
+                conflicting_txns |= {spending_tx_hash}
+        return conflicting_txns
+
     def add_transaction(self, tx_hash, tx):
         is_coinbase = tx.inputs()[0]['type'] == 'coinbase'
         related = False
         with self.transaction_lock:
+            # remove all conflicting txns; keep this one
+            conflicting_txns = self.get_conflicting_transactions(tx)
+            to_remove = set()
+            to_remove |= conflicting_txns
+            for conflicting_tx_hash in conflicting_txns:
+                to_remove |= self.get_depending_transactions(conflicting_tx_hash)
+            for tx_hash2 in to_remove:
+                self.remove_transaction(tx_hash2)
+
             # add inputs
             self.txi[tx_hash] = d = {}
             for txi in tx.inputs():
@@ -694,6 +728,7 @@ class Abstract_Wallet(PrintError):
                     prevout_hash = txi['prevout_hash']
                     prevout_n = txi['prevout_n']
                     ser = prevout_hash + ':%d'%prevout_n
+                    self.spent_outpoints[ser] = tx_hash
                 if addr == "(pubkey)":
                     addr = self.find_pay_to_pubkey_address(prevout_hash, prevout_n)
                 # find value from prev output
@@ -747,6 +782,17 @@ class Abstract_Wallet(PrintError):
             for ser, hh in list(self.pruned_txo.items()):
                 if hh == tx_hash:
                     self.pruned_txo.pop(ser)
+            tx = self.transactions.get(tx_hash, None)
+            if tx:
+                # if we can find the tx, this should be faster
+                for txi in tx.inputs():
+                    ser = Transaction.get_outpoint_from_txin(txi)
+                    self.spent_outpoints.pop(ser, None)
+            else:
+                for ser, hh in list(self.spent_outpoints.items()):
+                    if hh == tx_hash:
+                        self.spent_outpoints.pop(ser)
+
             # add tx to pruned_txo, and undo the txi addition
             for next_tx, dd in self.txi.items():
                 for addr, l in list(dd.items()):
