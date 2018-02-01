@@ -791,22 +791,23 @@ class Abstract_Wallet(PrintError):
             return True
 
     def remove_transaction(self, tx_hash):
+        def undo_spend(outpoint_to_txid_map):
+            if tx:
+                # if we have the tx, this should often be faster
+                for txi in tx.inputs():
+                    ser = Transaction.get_outpoint_from_txin(txi)
+                    outpoint_to_txid_map.pop(ser, None)
+            else:
+                for ser, hh in list(outpoint_to_txid_map.items()):
+                    if hh == tx_hash:
+                        outpoint_to_txid_map.pop(ser)
+
         with self.transaction_lock:
             self.print_error("removing tx from history", tx_hash)
             #tx = self.transactions.pop(tx_hash)
-            for ser, hh in list(self.pruned_txo.items()):
-                if hh == tx_hash:
-                    self.pruned_txo.pop(ser)
             tx = self.transactions.get(tx_hash, None)
-            if tx:
-                # if we can find the tx, this should be faster
-                for txi in tx.inputs():
-                    ser = Transaction.get_outpoint_from_txin(txi)
-                    self.spent_outpoints.pop(ser, None)
-            else:
-                for ser, hh in list(self.spent_outpoints.items()):
-                    if hh == tx_hash:
-                        self.spent_outpoints.pop(ser)
+            undo_spend(self.pruned_txo)
+            undo_spend(self.spent_outpoints)
 
             # add tx to pruned_txo, and undo the txi addition
             for next_tx, dd in self.txi.items():
