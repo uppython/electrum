@@ -277,6 +277,8 @@ class Abstract_Wallet(PrintError):
         for addr, hist in self.history.items():
             for txid, height in hist:
                 tx = self.transactions.get(txid, None)
+                if tx is None:
+                    continue
                 for txi in tx.inputs():
                     ser = Transaction.get_outpoint_from_txin(txi)
                     if ser is None:
