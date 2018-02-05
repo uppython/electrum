@@ -188,7 +188,7 @@ class Abstract_Wallet(PrintError):
         self.load_keystore()
         self.load_addresses()
         self.load_transactions()
-        self.build_reverse_history()
+        self.build_spent_outpoints()
 
         # load requests
         self.receive_requests = self.storage.get('payment_requests', {})
@@ -204,6 +204,8 @@ class Abstract_Wallet(PrintError):
         # interface.is_up_to_date() returns true when all requests have been answered and processed
         # wallet.up_to_date is true when the wallet is synchronized (stronger requirement)
         self.up_to_date = False
+
+        # locks: if you need to take multiple ones, acquire them in the order they are defined here!
         self.lock = threading.Lock()
         self.transaction_lock = threading.RLock()
 
@@ -233,7 +235,6 @@ class Abstract_Wallet(PrintError):
         self.txo = self.storage.get('txo', {})
         self.tx_fees = self.storage.get('tx_fees', {})
         self.pruned_txo = self.storage.get('pruned_txo', {})
-        self.spent_outpoints = self.storage.get('spent_outpoints', {})
         tx_list = self.storage.get('transactions', {})
         self.transactions = {}
         for tx_hash, raw in tx_list.items():
@@ -255,31 +256,32 @@ class Abstract_Wallet(PrintError):
             self.storage.put('txo', self.txo)
             self.storage.put('tx_fees', self.tx_fees)
             self.storage.put('pruned_txo', self.pruned_txo)
-            self.storage.put('spent_outpoints', self.spent_outpoints)
             self.storage.put('addr_history', self.history)
             if write:
                 self.storage.write()
 
     def clear_history(self):
-        with self.transaction_lock:
-            self.txi = {}
-            self.txo = {}
-            self.tx_fees = {}
-            self.pruned_txo = {}
-            self.spent_outpoints = {}
-        self.save_transactions()
         with self.lock:
-            self.history = {}
-            self.tx_addr_hist = {}
+            with self.transaction_lock:
+                self.txi = {}
+                self.txo = {}
+                self.tx_fees = {}
+                self.pruned_txo = {}
+                self.spent_outpoints = {}
+                self.history = {}
+                self.save_transactions()
 
     @profiler
-    def build_reverse_history(self):
-        self.tx_addr_hist = {}
+    def build_spent_outpoints(self):
+        self.spent_outpoints = {}
         for addr, hist in self.history.items():
-            for tx_hash, h in hist:
-                s = self.tx_addr_hist.get(tx_hash, set())
-                s.add(addr)
-                self.tx_addr_hist[tx_hash] = s
+            for txid, height in hist:
+                tx = self.transactions.get(txid, None)
+                for txi in tx.inputs():
+                    ser = Transaction.get_outpoint_from_txin(txi)
+                    if ser is None:
+                        continue
+                    self.spent_outpoints[ser] = txid
 
     @profiler
     def check_history(self):
@@ -713,7 +715,7 @@ class Abstract_Wallet(PrintError):
         with self.transaction_lock:
             # Find all conflicting transactions.
             # In case of a conflict,
-            #     1. mempool (and confirmed txns) have priority over local txns
+            #     1. confirmed > mempool > local
             #     2. this new txn has priority over existing ones
             # When this method exits, there must NOT be any conflict, so
             # either keep this txn and remove all conflicting (along with dependencies)
@@ -721,9 +723,16 @@ class Abstract_Wallet(PrintError):
             conflicting_txns = self.get_conflicting_transactions(tx)
             if conflicting_txns:
                 tx_height = self.get_tx_height(tx_hash)[0]
-                existing_nonlocal_txn = any(self.get_tx_height(tx_hash2)[0] != TX_HEIGHT_LOCAL
-                                            for tx_hash2 in conflicting_txns)
-                if existing_nonlocal_txn and tx_height == TX_HEIGHT_LOCAL:
+                existing_mempool_txn = any(
+                    self.get_tx_height(tx_hash2)[0] in (TX_HEIGHT_UNCONFIRMED, TX_HEIGHT_UNCONF_PARENT)
+                    for tx_hash2 in conflicting_txns)
+                existing_confirmed_txn = any(
+                    self.get_tx_height(tx_hash2)[0] > 0
+                    for tx_hash2 in conflicting_txns)
+                if existing_confirmed_txn and tx_height <= 0:
+                    # this is a non-confirmed tx that conflicts with confirmed txns; drop.
+                    return False
+                if existing_mempool_txn and tx_height == TX_HEIGHT_LOCAL:
                     # this is a local tx that conflicts with non-local txns; drop.
                     return False
                 # keep this txn and remove all conflicting
@@ -846,10 +855,6 @@ class Abstract_Wallet(PrintError):
         for tx_hash, tx_height in hist:
             # add it in case it was previously unconfirmed
             self.add_unverified_tx(tx_hash, tx_height)
-            # add reference in tx_addr_hist
-            s = self.tx_addr_hist.get(tx_hash, set())
-            s.add(addr)
-            self.tx_addr_hist[tx_hash] = s
             # if addr is new, we have to recompute txi and txo
             tx = self.transactions.get(tx_hash)
             if tx is not None and self.txi.get(tx_hash, {}).get(addr) is None and self.txo.get(tx_hash, {}).get(addr) is None:
