@@ -707,8 +707,11 @@ class ElectrumWindow(QMainWindow, MessageBoxMixin, PrintError):
             # until we get a headers subscription request response.
             # Display the synchronizing message in that case.
             if not self.wallet.up_to_date or server_height == 0:
-                text = _("Synchronizing...")
-                icon = QIcon(":icons/status_waiting.png")
+                text = _("Synchronizing...")  #
+                pixmap = QPixmap(":icons/status_waiting.png")
+                trans = QTransform().rotate(time.time() % 10 * 36)
+                pixmap = pixmap.transformed(trans)
+                icon = QIcon(pixmap)
             elif server_lag > 1:
                 text = _("Server is lagging ({} blocks)").format(server_lag)
                 icon = QIcon(":icons/status_lagging.png")
