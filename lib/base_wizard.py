@@ -81,6 +81,12 @@ class BaseWizard(object):
         action, args = self.stack.pop()
         self.run(action, *args)
 
+    def go_back_zero(self):
+        if not len(self.stack) > 0:
+            return
+        action, args = self.stack.pop()
+        self.run(action, *args)
+
     def new(self):
         name = os.path.basename(self.storage.path)
         title = _("Create") + ' ' + name

@@ -6,7 +6,7 @@ import stat
 
 from copy import deepcopy
 
-from .util import (user_dir, print_error, PrintError,
+from .util import (user_dir, print_error, PrintError, UserFacingException,
                    NoDynamicFeeEstimates, format_satoshis)
 from .i18n import _
 
@@ -107,7 +107,7 @@ class SimpleConfig(PrintError):
             # Make directory if it does not yet exist.
             if not os.path.exists(path):
                 if os.path.islink(path):
-                    raise BaseException('Dangling link: ' + path)
+                    raise UserFacingException('Dangling link: ' + path)
                 os.mkdir(path)
                 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
@@ -190,9 +190,9 @@ class SimpleConfig(PrintError):
         if cur_version > max_version:
             return False
         elif cur_version < min_version:
-            raise BaseException(
-                ('config upgrade: unexpected version %d (should be %d-%d)'
-                 % (cur_version, min_version, max_version)))
+            raise UserFacingException(
+                'config upgrade: unexpected version {} (should be {}-{})'
+                .format(cur_version, min_version, max_version))
         else:
             return True
 
@@ -231,7 +231,7 @@ class SimpleConfig(PrintError):
         dirpath = os.path.join(self.path, "wallets")
         if not os.path.exists(dirpath):
             if os.path.islink(dirpath):
-                raise BaseException('Dangling link: ' + dirpath)
+                raise UserFacingException('Dangling link: ' + dirpath)
             os.mkdir(dirpath)
             os.chmod(dirpath, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 

@@ -29,7 +29,7 @@ from unicodedata import normalize
 from . import bitcoin
 from .bitcoin import *
 from . import constants
-from .util import PrintError, InvalidPassword, hfu
+from .util import PrintError, InvalidPassword, hfu, UserFacingException
 from .mnemonic import Mnemonic, load_wordlist
 from .plugins import run_hook
 
@@ -634,14 +634,15 @@ def hardware_keystore(d):
     if hw_type in hw_keystores:
         constructor = hw_keystores[hw_type]
         return constructor(d)
-    raise BaseException('unknown hardware type', hw_type)
+    raise UserFacingException('unknown hardware type: {}'.format(hw_type))
 
 def load_keystore(storage, name):
-    w = storage.get('wallet_type', 'standard')
     d = storage.get(name, {})
     t = d.get('type')
     if not t:
-        raise BaseException('wallet format requires update')
+        raise UserFacingException(
+            'Wallet format requires update.\n'
+            'Cannot find keystore for name {}'.format(name))
     if t == 'old':
         k = Old_KeyStore(d)
     elif t == 'imported':
@@ -651,7 +652,8 @@ def load_keystore(storage, name):
     elif t == 'hardware':
         k = hardware_keystore(d)
     else:
-        raise BaseException('unknown wallet type', t)
+        raise UserFacingException(
+            'Unknown type {} for keystore named {}'.format(t, name))
     return k
 
 
@@ -709,7 +711,7 @@ def from_seed(seed, passphrase, is_p2sh):
             xtype = 'p2wsh' if is_p2sh else 'p2wpkh'
         keystore.add_xprv_from_seed(bip32_seed, xtype, der)
     else:
-        raise BaseException(t)
+        raise UserFacingException('Unexpected seed type {}'.format(t))
     return keystore
 
 def from_private_key_list(text):
@@ -743,5 +745,5 @@ def from_master_key(text):
     elif is_xpub(text):
         k = from_xpub(text)
     else:
-        raise BaseException('Invalid key')
+        raise UserFacingException('Invalid key')
     return k

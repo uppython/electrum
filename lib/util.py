@@ -45,6 +45,11 @@ base_units = {'BTC':8, 'mBTC':5, 'uBTC':2}
 def normalize_version(v):
     return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
 
+
+class UserFacingException(Exception):
+    """Exception that is primarily meant to be shown to the user."""
+
+
 class NotEnoughFunds(Exception): pass
 
 

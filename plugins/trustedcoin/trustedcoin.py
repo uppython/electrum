@@ -40,7 +40,7 @@ from electrum import version
 from electrum.wallet import Multisig_Wallet, Deterministic_Wallet
 from electrum.i18n import _
 from electrum.plugins import BasePlugin, hook
-from electrum.util import NotEnoughFunds
+from electrum.util import NotEnoughFunds, UserFacingException
 from electrum.storage import STO_EV_USER_PW
 
 # signing_xpub is hardcoded so that the wallet can be restored from seed, without TrustedCoin's server
@@ -406,7 +406,7 @@ class TrustedCoinPlugin(BasePlugin):
             xprv1, xpub1 = self.get_xkeys(seed, passphrase, "m/0'/")
             xprv2, xpub2 = self.get_xkeys(seed, passphrase, "m/1'/")
         else:
-            raise BaseException('unrecognized seed length')
+            raise UserFacingException('unrecognized seed length: {} words'.format(n))
         return xprv1, xpub1, xprv2, xpub2
 
     def create_keystore(self, wizard, seed, passphrase):

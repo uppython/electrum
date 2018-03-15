@@ -44,7 +44,7 @@ from electrum import WalletStorage
 # from electrum.synchronizer import Synchronizer
 # from electrum.verifier import SPV
 # from electrum.util import DebugMem
-from electrum.util import UserCancelled, print_error
+from electrum.util import UserCancelled, print_error, UserFacingException
 # from electrum.wallet import Abstract_Wallet
 
 from .installwizard import InstallWizard, GoBack
@@ -191,7 +191,7 @@ class ElectrumGui:
         except BaseException as e:
             traceback.print_exc(file=sys.stdout)
             d = QMessageBox(QMessageBox.Warning, _('Error'),
-                            _('Cannot load wallet:') + '\n' + str(e))
+                            _('Cannot load wallet') + ' (1):\n' + str(e))
             d.exec_()
             return
         if not wallet:
@@ -203,7 +203,14 @@ class ElectrumGui:
                 pass
             except GoBack as e:
                 print_error('[start_new_window] Exception caught (GoBack)', e)
-            wizard.terminate()
+            except UserFacingException as e:
+                traceback.print_exc(file=sys.stderr)
+                d = QMessageBox(QMessageBox.Warning, _('Error'),
+                                _('Cannot load wallet') + ' (2):\n' + str(e))
+                d.exec_()
+                return
+            finally:
+                wizard.terminate()
             if not wallet:
                 return
 
@@ -220,7 +227,7 @@ class ElectrumGui:
         except BaseException as e:
             traceback.print_exc(file=sys.stdout)
             d = QMessageBox(QMessageBox.Warning, _('Error'),
-                            _('Cannot create window for wallet:') + '\n' + str(e))
+                            _('Cannot create window for wallet') + ':\n' + str(e))
             d.exec_()
             return
         if uri:

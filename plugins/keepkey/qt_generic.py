@@ -10,7 +10,7 @@ from ..hw_wallet.qt import QtHandlerBase, QtPluginBase
 
 from electrum.i18n import _
 from electrum.plugins import hook, DeviceMgr
-from electrum.util import PrintError, UserCancelled, bh2u
+from electrum.util import PrintError, UserCancelled, bh2u, UserFacingException
 from electrum.wallet import Wallet, Standard_Wallet
 
 PASSPHRASE_HELP_SHORT =_(
@@ -381,7 +381,7 @@ class SettingsDialog(WindowModalDialog):
             if filename:
                 im = Image.open(str(filename))
                 if im.size != (hs_cols, hs_rows):
-                    raise Exception('Image must be 64 x 128 pixels')
+                    raise UserFacingException('Image must be 64 x 128 pixels')
                 im = im.convert('1')
                 pix = im.load()
                 img = ''

@@ -9,7 +9,7 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 
 from electrum import Wallet, WalletStorage
-from electrum.util import UserCancelled, InvalidPassword
+from electrum.util import UserCancelled, InvalidPassword, UserFacingException
 from electrum.base_wizard import BaseWizard, HWD_SETUP_DECRYPT_WALLET
 from electrum.i18n import _
 
@@ -84,7 +84,12 @@ def wizard_dialog(func):
         #    out = ()
         if type(out) is not tuple:
             out = (out,)
-        run_next(*out)
+        try:
+            run_next(*out)
+        except UserFacingException as e:
+            traceback.print_exc(file=sys.stderr)
+            QMessageBox.warning(None, _('Error'), str(e))
+            wizard.go_back_zero()  # show this dialog again
     return func_wrapper
 
 

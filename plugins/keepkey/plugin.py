@@ -2,7 +2,7 @@ import threading
 
 from binascii import hexlify, unhexlify
 
-from electrum.util import bfh, bh2u
+from electrum.util import bfh, bh2u, UserFacingException
 from electrum.bitcoin import (b58_address_to_hash160, xpub_from_pubkey,
                               TYPE_ADDRESS, TYPE_SCRIPT,
                               is_segwit_address)
@@ -31,7 +31,7 @@ class KeepKeyCompatibleKeyStore(Hardware_KeyStore):
         return self.plugin.get_client(self, force_pair)
 
     def decrypt_message(self, sequence, message, password):
-        raise RuntimeError(_('Encryption and decryption are not implemented by {}').format(self.device))
+        raise UserFacingException(_('Encryption and decryption are not implemented by {}').format(self.device))
 
     def sign_message(self, sequence, message, password):
         client = self.get_client()

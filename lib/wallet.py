@@ -44,7 +44,8 @@ import sys
 
 from .i18n import _
 from .util import (NotEnoughFunds, PrintError, UserCancelled, profiler,
-                   format_satoshis, NoDynamicFeeEstimates, TimeoutException)
+                   format_satoshis, NoDynamicFeeEstimates, TimeoutException,
+                   UserFacingException)
 
 from .bitcoin import *
 from .version import *
@@ -130,7 +131,8 @@ def sweep_preparations(privkeys, network, imax=100):
             # we also search for pay-to-pubkey outputs
             find_utxos_for_privkey('p2pk', privkey, compressed)
     if not inputs:
-        raise BaseException(_('No inputs found. (Note that inputs need to be confirmed)'))
+        raise UserFacingException(_('No inputs found. (Note that inputs need to be confirmed)'))
+        # FIXME actually inputs need not be confirmed now, see https://github.com/kyuupichan/electrumx/issues/365
     return inputs, keypairs
 
 
@@ -142,9 +144,9 @@ def sweep(privkeys, network, config, recipient, fee=None, imax=100):
         tx = Transaction.from_io(inputs, outputs)
         fee = config.estimate_fee(tx.estimated_size())
     if total - fee < 0:
-        raise BaseException(_('Not enough funds on address.') + '\nTotal: %d satoshis\nFee: %d'%(total, fee))
+        raise UserFacingException(_('Not enough funds on address.') + '\nTotal: %d satoshis\nFee: %d'%(total, fee))
     if total - fee < dust_threshold(network):
-        raise BaseException(_('Not enough funds on address.') + '\nTotal: %d satoshis\nFee: %d\nDust Threshold: %d'%(total, fee, dust_threshold(network)))
+        raise UserFacingException(_('Not enough funds on address.') + '\nTotal: %d satoshis\nFee: %d\nDust Threshold: %d'%(total, fee, dust_threshold(network)))
 
     outputs = [(TYPE_ADDRESS, recipient, total - fee)]
     locktime = network.get_local_height()
@@ -156,7 +158,7 @@ def sweep(privkeys, network, config, recipient, fee=None, imax=100):
     return tx
 
 
-class AddTransactionException(Exception):
+class AddTransactionException(UserFacingException):
     pass
 
 
@@ -1166,10 +1168,10 @@ class Abstract_Wallet(PrintError):
             _type, data, value = o
             if _type == TYPE_ADDRESS:
                 if not is_address(data):
-                    raise BaseException("Invalid bitcoin address:" + data)
+                    raise UserFacingException("Invalid bitcoin address: {}".format(data))
             if value == '!':
                 if i_max is not None:
-                    raise BaseException("More than one output set to spend max")
+                    raise UserFacingException("More than one output set to spend max")
                 i_max = i
 
         # Avoid index-out-of-range with inputs[0] below
@@ -1339,7 +1341,7 @@ class Abstract_Wallet(PrintError):
 
     def bump_fee(self, tx, delta):
         if tx.is_final():
-            raise BaseException(_("Cannot bump fee: transaction is final"))
+            raise UserFacingException(_('Cannot bump fee') + ': ' + _('transaction is final'))
         inputs = copy.deepcopy(tx.inputs())
         outputs = copy.deepcopy(tx.outputs())
         for txin in inputs:
@@ -1370,7 +1372,7 @@ class Abstract_Wallet(PrintError):
                 if delta > 0:
                     continue
         if delta > 0:
-            raise BaseException(_('Cannot bump fee: could not find suitable outputs'))
+            raise UserFacingException(_('Cannot bump fee') + ': ' + _('could not find suitable outputs'))
         locktime = self.get_local_height()
         tx_new = Transaction.from_io(inputs, outputs, locktime=locktime)
         tx_new.BIP_LI01_sort()
@@ -1944,14 +1946,14 @@ class Imported_Wallet(Simple_Wallet):
             txin_type, pubkey = self.keystore.import_privkey(sec, pw)
         except Exception:
             neutered_privkey = str(sec)[:3] + '..' + str(sec)[-2:]
-            raise BaseException('Invalid private key', neutered_privkey)
+            raise UserFacingException('Invalid private key: {}'.format(neutered_privkey))
         if txin_type in ['p2pkh', 'p2wpkh', 'p2wpkh-p2sh']:
             if redeem_script is not None:
-                raise BaseException('Cannot use redeem script with', txin_type)
+                raise UserFacingException('Cannot use redeem script with script type {}'.format(txin_type))
             addr = bitcoin.pubkey_to_address(txin_type, pubkey)
         elif txin_type in ['p2sh', 'p2wsh', 'p2wsh-p2sh']:
             if redeem_script is None:
-                raise BaseException('Redeem script required for', txin_type)
+                raise UserFacingException('Redeem script required for script type {}'.format(txin_type))
             addr = bitcoin.redeem_script_to_address(txin_type, redeem_script)
         else:
             raise NotImplementedError(txin_type)

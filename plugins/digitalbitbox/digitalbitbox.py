@@ -12,7 +12,7 @@ try:
     from electrum.i18n import _
     from electrum.keystore import Hardware_KeyStore
     from ..hw_wallet import HW_PluginBase
-    from electrum.util import print_error, to_string, UserCancelled
+    from electrum.util import print_error, to_string, UserCancelled, UserFacingException
     from electrum.base_wizard import ScriptTypeNotSupported, HWD_SETUP_NEW_WALLET
 
     import time
@@ -100,13 +100,13 @@ class DigitalBitbox_Client():
                 xpub = serialize_xpub(xtype, c, cK, depth, fingerprint, child_number)
             return xpub
         else:
-            raise BaseException('no reply')
+            raise UserFacingException(_('No reply from device'))
 
 
     def dbb_has_password(self):
         reply = self.hid_send_plain(b'{"ping":""}')
         if 'ping' not in reply:
-            raise Exception(_('Device communication error. Please unplug and replug your Digital Bitbox.'))
+            raise UserFacingException(_('Device communication error. Please unplug and replug your Digital Bitbox.'))
         if reply['ping'] == 'password':
             return True
         return False
@@ -213,7 +213,7 @@ class DigitalBitbox_Client():
                 return
         else:
             if self.hid_send_encrypt(b'{"device":"info"}')['device']['lock']:
-                raise Exception(_("Full 2FA enabled. This is not supported yet."))
+                raise UserFacingException(_("Full 2FA enabled. This is not supported yet."))
             # Use existing seed
         self.isInitialized = True
 
@@ -281,7 +281,7 @@ class DigitalBitbox_Client():
         msg = b'{"seed":{"source": "create", "key": "%s", "filename": "%s", "entropy": "%s"}}' % (key, filename, b'Digital Bitbox Electrum Plugin')
         reply = self.hid_send_encrypt(msg)
         if 'error' in reply:
-            raise Exception(reply['error']['message'])
+            raise UserFacingException(reply['error']['message'])
 
 
     def dbb_erase(self):
@@ -291,23 +291,24 @@ class DigitalBitbox_Client():
         hid_reply = self.hid_send_encrypt(b'{"reset":"__ERASE__"}')
         self.handler.finished()
         if 'error' in hid_reply:
-            raise Exception(hid_reply['error']['message'])
+            raise UserFacingException(hid_reply['error']['message'])
         else:
             self.password = None
-            raise Exception('Device erased')
+            raise UserFacingException(_('Device erased'))
 
 
     def dbb_load_backup(self, show_msg=True):
         backups = self.hid_send_encrypt(b'{"backup":"list"}')
         if 'error' in backups:
-            raise Exception(backups['error']['message'])
+            raise UserFacingException(backups['error']['message'])
         try:
             f = self.handler.win.query_choice(_("Choose a backup file:"), backups['backup'])
         except Exception:
             return False # Back button pushed
         key = self.backup_password_dialog()
         if key is None:
-            raise Exception('Canceled by user')
+            # FIXME shouldn't we raise UserCancelled instead?
+            raise UserFacingException(_('Cancelled by user'))
         key = self.stretch_key(key)
         if show_msg:
             self.handler.show_message(_("Loading backup...") + "\n\n" +
@@ -317,7 +318,7 @@ class DigitalBitbox_Client():
         hid_reply = self.hid_send_encrypt(msg)
         self.handler.finished()
         if 'error' in hid_reply:
-            raise Exception(hid_reply['error']['message'])
+            raise UserFacingException(hid_reply['error']['message'])
         return True
 
 
@@ -423,11 +424,12 @@ class DigitalBitbox_KeyStore(Hardware_KeyStore):
     def give_error(self, message, clear_client = False):
         if clear_client:
             self.client = None
-        raise Exception(message)
+        raise UserFacingException(message)
 
 
     def decrypt_message(self, pubkey, message, password):
-        raise RuntimeError(_('Encryption and decryption are currently not supported for {}').format(self.device))
+        raise UserFacingException(_('Encryption and decryption are currently not supported for {}')
+                                  .format(self.device))
 
 
     def sign_message(self, sequence, message, password):
@@ -446,7 +448,7 @@ class DigitalBitbox_KeyStore(Hardware_KeyStore):
             dbb_client = self.plugin.get_client(self)
 
             if not dbb_client.is_paired():
-                raise Exception(_("Could not sign message."))
+                raise UserFacingException(_("Could not sign message."))
 
             reply = dbb_client.hid_send_encrypt(msg)
             self.handler.show_message(_("Signing message ...") + "\n\n" +
@@ -456,10 +458,10 @@ class DigitalBitbox_KeyStore(Hardware_KeyStore):
             self.handler.finished()
 
             if 'error' in reply:
-                raise Exception(reply['error']['message'])
+                raise UserFacingException(reply['error']['message'])
 
             if 'sign' not in reply:
-                raise Exception(_("Could not sign message."))
+                raise UserFacingException(_("Could not sign message."))
 
             if 'recid' in reply['sign'][0]:
                 # firmware > v2.1.1
@@ -468,7 +470,7 @@ class DigitalBitbox_KeyStore(Hardware_KeyStore):
                 pk = point_to_ser(pk.pubkey.point, compressed)
                 addr = public_key_to_p2pkh(pk)
                 if verify_message(addr, sig, message) is False:
-                    raise Exception(_("Could not sign message"))
+                    raise UserFacingException(_("Could not sign message"))
             elif 'pubkey' in reply['sign'][0]:
                 # firmware <= v2.1.1
                 for i in range(4):
@@ -480,7 +482,7 @@ class DigitalBitbox_KeyStore(Hardware_KeyStore):
                     except Exception:
                         continue
                 else:
-                    raise Exception(_("Could not sign message"))
+                    raise UserFacingException(_("Could not sign message"))
 
 
         except BaseException as e:
@@ -567,14 +569,14 @@ class DigitalBitbox_KeyStore(Hardware_KeyStore):
                 dbb_client = self.plugin.get_client(self)
 
                 if not dbb_client.is_paired():
-                    raise Exception("Could not sign transaction.")
+                    raise UserFacingException("Could not sign transaction.")
 
                 reply = dbb_client.hid_send_encrypt(msg)
                 if 'error' in reply:
-                    raise Exception(reply['error']['message'])
+                    raise UserFacingException(reply['error']['message'])
 
                 if 'echo' not in reply:
-                    raise Exception("Could not sign transaction.")
+                    raise UserFacingException("Could not sign transaction.")
 
                 if self.plugin.is_mobile_paired() and tx_dbb_serialized is not None:
                     reply['tx'] = tx_dbb_serialized
@@ -598,10 +600,10 @@ class DigitalBitbox_KeyStore(Hardware_KeyStore):
                     if reply["error"].get('code') in (600, 601):
                         # aborted via LED short touch or timeout
                         raise UserCancelled()
-                    raise Exception(reply['error']['message'])
+                    raise UserFacingException(reply['error']['message'])
 
                 if 'sign' not in reply:
-                    raise Exception("Could not sign transaction.")
+                    raise UserFacingException("Could not sign transaction.")
 
                 dbb_signatures.extend(reply['sign'])
 

@@ -10,7 +10,7 @@ from ..hw_wallet.qt import QtHandlerBase, QtPluginBase
 
 from electrum.i18n import _
 from electrum.plugins import hook, DeviceMgr
-from electrum.util import PrintError, UserCancelled, bh2u
+from electrum.util import PrintError, UserCancelled, bh2u, UserFacingException
 from electrum.wallet import Wallet, Standard_Wallet
 
 PASSPHRASE_HELP_SHORT =_(
@@ -385,12 +385,12 @@ class SettingsDialog(WindowModalDialog):
             if filename.endswith('.toif'):
                 img = open(filename, 'rb').read()
                 if img[:8] != b'TOIf\x90\x00\x90\x00':
-                    raise Exception('File is not a TOIF file with size of 144x144')
+                    raise UserFacingException('File is not a TOIF file with size of 144x144')
             else:
                 from PIL import Image # FIXME
                 im = Image.open(filename)
                 if im.size != (128, 64):
-                    raise Exception('Image must be 128 x 64 pixels')
+                    raise UserFacingException('Image must be 128 x 64 pixels')
                 im = im.convert('1')
                 pix = im.load()
                 img = bytearray(1024)
