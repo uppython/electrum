@@ -41,8 +41,10 @@ def needs_test_with_and_without_coincurve(func):
         if _coincurve is None:
             return
         bitcoin.coincurve = None
-        func(*args, **kwargs)
-        bitcoin.coincurve = _coincurve
+        try:
+            func(*args, **kwargs)
+        finally:
+            bitcoin.coincurve = _coincurve
     return run_test
 
 
